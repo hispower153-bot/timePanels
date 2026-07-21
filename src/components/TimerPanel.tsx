@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Pause, Play, RotateCcw, Plus, Flag } from "lucide-react";
 
 type Mode = "countdown" | "stopwatch";
 type Status = "idle" | "running" | "paused" | "alarm";
@@ -48,21 +49,25 @@ function beep() {
   }
 }
 
+const RING_RADIUS = 138;
+const RING_STROKE = 10;
+const RING_CIRC = 2 * Math.PI * RING_RADIUS;
+
 export default function TimerPanel() {
   const [mode, setMode] = useState<Mode>("countdown");
   const [status, setStatus] = useState<Status>("idle");
 
-  // countdown setup
   const [setH, setSetH] = useState(0);
   const [setM, setSetM] = useState(5);
   const [setS, setSetS] = useState(0);
 
-  const [displayMs, setDisplayMs] = useState(0);
+  const [displayMs, setDisplayMs] = useState(5 * 60 * 1000);
   const [laps, setLaps] = useState<Lap[]>([]);
 
   const runningRef = useRef(false);
   const countdownEndAtRef = useRef<number | null>(null);
   const countdownRemainingRef = useRef(0);
+  const countdownTotalRef = useRef(5 * 60 * 1000);
   const stopwatchStartAtRef = useRef<number | null>(null);
   const stopwatchElapsedRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -95,7 +100,9 @@ export default function TimerPanel() {
 
   useEffect(() => {
     if (mode === "countdown" && status === "idle") {
-      setDisplayMs((setH * 3600 + setM * 60 + setS) * 1000);
+      const totalMs = (setH * 3600 + setM * 60 + setS) * 1000;
+      setDisplayMs(totalMs);
+      countdownTotalRef.current = totalMs || 1;
     }
   }, [setH, setM, setS, mode, status]);
 
@@ -108,7 +115,9 @@ export default function TimerPanel() {
     stopwatchElapsedRef.current = 0;
     countdownRemainingRef.current = 0;
     if (next === "countdown") {
-      setDisplayMs((setH * 3600 + setM * 60 + setS) * 1000);
+      const totalMs = (setH * 3600 + setM * 60 + setS) * 1000;
+      setDisplayMs(totalMs);
+      countdownTotalRef.current = totalMs || 1;
     } else {
       setDisplayMs(0);
     }
@@ -134,6 +143,7 @@ export default function TimerPanel() {
         const totalMs = (setH * 3600 + setM * 60 + setS) * 1000;
         if (totalMs <= 0) return;
         countdownRemainingRef.current = totalMs;
+        countdownTotalRef.current = totalMs;
       }
       countdownEndAtRef.current = Date.now() + countdownRemainingRef.current;
     } else {
@@ -161,7 +171,9 @@ export default function TimerPanel() {
     setStatus("idle");
     if (mode === "countdown") {
       countdownRemainingRef.current = 0;
-      setDisplayMs((setH * 3600 + setM * 60 + setS) * 1000);
+      const totalMs = (setH * 3600 + setM * 60 + setS) * 1000;
+      setDisplayMs(totalMs);
+      countdownTotalRef.current = totalMs || 1;
     } else {
       stopwatchElapsedRef.current = 0;
       setDisplayMs(0);
@@ -178,25 +190,54 @@ export default function TimerPanel() {
     });
   };
 
+  const addFiveMinutes = () => {
+    if (mode !== "countdown") return;
+    const addMs = 5 * 60 * 1000;
+    if (status === "running") {
+      countdownEndAtRef.current = (countdownEndAtRef.current ?? Date.now()) + addMs;
+      countdownTotalRef.current += addMs;
+    } else if (status === "paused") {
+      countdownRemainingRef.current += addMs;
+      countdownTotalRef.current += addMs;
+      setDisplayMs(countdownRemainingRef.current);
+    } else {
+      const totalSec = setH * 3600 + setM * 60 + setS + 5 * 60;
+      setSetH(Math.min(23, Math.floor(totalSec / 3600)));
+      setSetM(Math.floor((totalSec % 3600) / 60));
+      setSetS(totalSec % 60);
+    }
+  };
+
   const { h, m, s } = splitTime(displayMs);
   const hh = pad(h), mm = pad(m), ss = pad(s);
-  const showMs = mode === "stopwatch";
-  const csDisplay = pad(splitTime(displayMs).cs);
 
-  const ledClass =
-    status === "running" ? "bg-teal shadow-[0_0_0_4px_rgba(46,196,182,0.18),0_0_10px_rgba(46,196,182,0.6)]"
-    : status === "paused" ? "bg-amber shadow-[0_0_0_4px_rgba(255,159,28,0.18)]"
-    : status === "alarm" ? "bg-red shadow-[0_0_0_4px_rgba(255,93,93,0.22),0_0_14px_rgba(255,93,93,0.7)] animate-pulse"
-    : "bg-muted shadow-[0_0_0_3px_rgba(124,133,144,0.12)]";
+  const progressFrac =
+    mode === "countdown"
+      ? Math.max(0, Math.min(1, displayMs / (countdownTotalRef.current || 1)))
+      : (displayMs % 60000) / 60000;
+
+  const dashOffset = RING_CIRC * (1 - progressFrac);
+
+  const statusColor =
+    status === "running" ? "text-emerald-500"
+    : status === "paused" ? "text-amber-500"
+    : status === "alarm" ? "text-rose-500"
+    : "text-slate-400";
+
+  const statusDot =
+    status === "running" ? "bg-emerald-500"
+    : status === "paused" ? "bg-amber-500"
+    : status === "alarm" ? "bg-rose-500 animate-pulse"
+    : "bg-slate-300";
 
   const statusLabel =
-    status === "running" ? (mode === "countdown" ? "진행 중" : "측정 중")
-    : status === "paused" ? "일시정지"
-    : status === "alarm" ? "시간 종료"
-    : "대기 중";
+    status === "running" ? (mode === "countdown" ? "RUNNING" : "MEASURING")
+    : status === "paused" ? "PAUSED"
+    : status === "alarm" ? "TIME'S UP"
+    : "READY";
 
-  const Cell = ({ value }: { value: string }) => (
-    <span className="font-mono font-bold text-[clamp(38px,11vw,62px)] leading-none min-w-[0.62em] text-center text-text bg-[#101317] rounded-lg px-1 pt-2.5 pb-2 shadow-[inset_0_2px_3px_rgba(0,0,0,0.6),inset_0_-1px_0_rgba(255,255,255,0.06)] font-variant-tabular">
+  const Tile = ({ value }: { value: string }) => (
+    <span className="font-mono font-extrabold text-[40px] sm:text-[46px] leading-none text-[#232338] bg-[#F3F2FB] rounded-2xl w-[58px] sm:w-[68px] h-[74px] sm:h-[84px] flex items-center justify-center shadow-[0_2px_0_rgba(35,35,56,0.06),inset_0_1px_0_rgba(255,255,255,0.9)] font-variant-tabular">
       {value}
     </span>
   );
@@ -204,16 +245,17 @@ export default function TimerPanel() {
   return (
     <div className="max-w-xl mx-auto px-4 pb-16">
       {/* 상단 광고 자리 */}
-      <div className="bg-panel border border-hairline rounded-lg min-h-[66px] flex items-center justify-center text-muted text-[11px] tracking-wide uppercase mb-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div className="bg-white/10 border border-white/20 rounded-xl min-h-[64px] flex items-center justify-center text-white/60 text-[11px] tracking-wide uppercase mb-6 backdrop-blur-sm">
         광고 영역 (상단)
       </div>
 
+      {/* 모드 전환 */}
       <div className="flex justify-center mb-6">
-        <div className="inline-flex bg-panel border border-hairline rounded-full p-1 shadow-[inset_0_2px_4px_rgba(0,0,0,0.45)]">
+        <div className="inline-flex bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-1">
           <button
             onClick={() => switchMode("countdown")}
             className={`px-5 py-2.5 rounded-full text-[13px] font-semibold transition-colors ${
-              mode === "countdown" ? "bg-panel-alt text-text shadow-[0_1px_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.35)]" : "text-muted"
+              mode === "countdown" ? "bg-white text-indigo-700 shadow-sm" : "text-white/70"
             }`}
           >
             카운트다운
@@ -221,7 +263,7 @@ export default function TimerPanel() {
           <button
             onClick={() => switchMode("stopwatch")}
             className={`px-5 py-2.5 rounded-full text-[13px] font-semibold transition-colors ${
-              mode === "stopwatch" ? "bg-panel-alt text-text shadow-[0_1px_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.35)]" : "text-muted"
+              mode === "stopwatch" ? "bg-white text-indigo-700 shadow-sm" : "text-white/70"
             }`}
           >
             스탑워치
@@ -229,61 +271,102 @@ export default function TimerPanel() {
         </div>
       </div>
 
-      <div className="bg-gradient-to-b from-panel to-[#191D22] border border-hairline rounded-[18px] px-6 pt-9 pb-7 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_20px_40px_rgba(0,0,0,0.35)]">
-        <div className="flex items-center justify-center gap-2 mb-5">
-          <span className={`w-2 h-2 rounded-full transition-colors ${ledClass}`} />
-          <span className="text-[11px] tracking-[0.14em] uppercase text-muted">{statusLabel}</span>
+      {/* 메인 카드 */}
+      <div className="bg-white rounded-[32px] shadow-2xl px-6 sm:px-10 pt-10 pb-9">
+        <div className="text-center mb-1">
+          <p className="text-indigo-600 font-extrabold text-sm tracking-[0.18em] uppercase">
+            {mode === "countdown" ? "Countdown Session" : "Stopwatch Session"}
+          </p>
+          <p className="text-slate-400 text-sm mt-1">
+            {mode === "countdown" ? "카운트다운 세션" : "경과 시간 측정"}
+          </p>
         </div>
 
-        <div className="flex items-baseline justify-center gap-1.5 flex-wrap mb-2">
-          <div className="flex gap-[3px]"><Cell value={hh[0]} /><Cell value={hh[1]} /></div>
-          <span className="font-mono text-[clamp(38px,11vw,62px)] text-muted pt-2.5 pb-2 self-start">:</span>
-          <div className="flex gap-[3px]"><Cell value={mm[0]} /><Cell value={mm[1]} /></div>
-          <span className="font-mono text-[clamp(38px,11vw,62px)] text-muted pt-2.5 pb-2 self-start">:</span>
-          <div className="flex gap-[3px]"><Cell value={ss[0]} /><Cell value={ss[1]} /></div>
-          <span className={`font-mono text-[clamp(18px,5vw,26px)] text-teal self-end pb-3 min-w-[1.6em] font-variant-tabular ${showMs ? "visible" : "invisible"}`}>
-            .{csDisplay}
-          </span>
-        </div>
-        <p className="text-center text-[12px] text-muted tracking-wide mb-6">
-          {mode === "countdown" ? "시:분:초" : "경과 시간"}
-        </p>
+        {/* 원형 링 + 숫자 타일 */}
+        <div className="relative flex items-center justify-center my-8">
+          <svg
+            width={(RING_RADIUS + RING_STROKE) * 2}
+            height={(RING_RADIUS + RING_STROKE) * 2}
+            className="-rotate-90"
+          >
+            <circle
+              cx={RING_RADIUS + RING_STROKE}
+              cy={RING_RADIUS + RING_STROKE}
+              r={RING_RADIUS}
+              fill="none"
+              stroke="#E9E7F9"
+              strokeWidth={RING_STROKE}
+            />
+            <circle
+              cx={RING_RADIUS + RING_STROKE}
+              cy={RING_RADIUS + RING_STROKE}
+              r={RING_RADIUS}
+              fill="none"
+              stroke="#6C5CE7"
+              strokeWidth={RING_STROKE}
+              strokeLinecap="round"
+              strokeDasharray={RING_CIRC}
+              strokeDashoffset={dashOffset}
+              style={{ transition: "stroke-dashoffset 0.2s linear" }}
+            />
+            <circle
+              cx={RING_RADIUS + RING_STROKE}
+              cy={RING_STROKE}
+              r={4}
+              fill="#6C5CE7"
+            />
+          </svg>
 
-        {mode === "countdown" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <div className="flex items-center gap-2">
+              <Tile value={hh} />
+              <Tile value={mm} />
+              <Tile value={ss} />
+            </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${statusDot}`} />
+              <span className={`text-[11px] font-bold tracking-[0.14em] ${statusColor}`}>
+                {statusLabel}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {mode === "countdown" && status === "idle" && (
           <>
-            <div className="flex justify-center gap-4 sm:gap-5 mb-6">
+            <div className="flex justify-center gap-4 sm:gap-6 mb-5">
               {([
-                { label: "시간", val: setH, field: "h" as const, display: pad(setH) },
-                { label: "분", val: setM, field: "m" as const, display: pad(setM) },
-                { label: "초", val: setS, field: "s" as const, display: pad(setS) },
+                { label: "시간", field: "h" as const, display: pad(setH) },
+                { label: "분", field: "m" as const, display: pad(setM) },
+                { label: "초", field: "s" as const, display: pad(setS) },
               ]).map((d) => (
-                <div key={d.field} className="flex flex-col items-center gap-1.5">
-                  <label className="text-[10px] tracking-[0.12em] uppercase text-muted">{d.label}</label>
-                  <div className="flex flex-col items-center gap-1">
-                    <button
-                      onClick={() => adjust(d.field, 1)}
-                      className="w-8 h-6 rounded-md border border-hairline bg-panel-alt text-muted text-xs flex items-center justify-center hover:text-amber hover:border-amber transition-colors"
-                    >
-                      ▲
-                    </button>
-                    <span className="font-mono font-bold text-xl w-11 text-center">{d.display}</span>
-                    <button
-                      onClick={() => adjust(d.field, -1)}
-                      className="w-8 h-6 rounded-md border border-hairline bg-panel-alt text-muted text-xs flex items-center justify-center hover:text-amber hover:border-amber transition-colors"
-                    >
-                      ▼
-                    </button>
-                  </div>
+                <div key={d.field} className="flex flex-col items-center gap-1">
+                  <button
+                    onClick={() => adjust(d.field, 1)}
+                    className="w-7 h-6 rounded-md text-slate-400 text-xs flex items-center justify-center hover:text-indigo-600 transition-colors"
+                  >
+                    ▲
+                  </button>
+                  <span className="font-mono font-bold text-base text-slate-600 w-9 text-center">
+                    {d.display}
+                  </span>
+                  <button
+                    onClick={() => adjust(d.field, -1)}
+                    className="w-7 h-6 rounded-md text-slate-400 text-xs flex items-center justify-center hover:text-indigo-600 transition-colors"
+                  >
+                    ▼
+                  </button>
+                  <span className="text-[10px] text-slate-300 tracking-wide">{d.label}</span>
                 </div>
               ))}
             </div>
 
-            <div className="flex justify-center gap-2 flex-wrap mb-1">
+            <div className="flex justify-center gap-2 flex-wrap mb-2">
               {[1, 3, 5, 10, 25].map((min) => (
                 <button
                   key={min}
                   onClick={() => applyPreset(0, min, 0)}
-                  className="font-mono text-xs border border-dashed border-hairline text-muted px-3 py-1.5 rounded-full hover:text-amber hover:border-amber transition-colors"
+                  className="text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full hover:border-indigo-300 hover:text-indigo-600 transition-colors"
                 >
                   {min}분
                 </button>
@@ -292,47 +375,60 @@ export default function TimerPanel() {
           </>
         )}
 
-        <div className="flex justify-center gap-3 flex-wrap mt-6">
+        {/* 컨트롤 버튼 */}
+        <div className="flex justify-center gap-3 flex-wrap mt-7">
           <button
             onClick={() => (runningRef.current ? pause() : start())}
-            className={`rounded-[10px] font-semibold text-sm px-6 py-3 transition-transform active:translate-y-px hover:brightness-110 ${
-              runningRef.current ? "bg-amber text-[#0C1412]" : "bg-teal text-[#0C1412]"
-            }`}
+            className="flex items-center gap-2 bg-white border border-slate-200 shadow-[0_2px_8px_rgba(35,35,56,0.08)] rounded-full font-semibold text-sm text-[#232338] px-6 py-3 hover:shadow-[0_4px_14px_rgba(35,35,56,0.12)] transition-shadow active:translate-y-px"
           >
-            {runningRef.current ? "일시정지" : status === "paused" ? "재개" : "시작"}
+            {runningRef.current ? <Pause size={16} /> : <Play size={16} />}
+            {runningRef.current ? "Pause" : status === "paused" ? "Resume" : "Start"}
           </button>
-          {mode === "stopwatch" && (
-            <button
-              onClick={addLap}
-              className="rounded-[10px] font-semibold text-sm px-6 py-3 bg-panel-alt text-text border border-hairline hover:border-muted transition-colors"
-            >
-              랩
-            </button>
-          )}
+
           <button
             onClick={reset}
-            className="rounded-[10px] font-semibold text-sm px-6 py-3 bg-transparent text-muted border border-hairline hover:text-text transition-colors"
+            className="flex items-center gap-2 bg-white border border-slate-200 shadow-[0_2px_8px_rgba(35,35,56,0.08)] rounded-full font-semibold text-sm text-[#232338] px-6 py-3 hover:shadow-[0_4px_14px_rgba(35,35,56,0.12)] transition-shadow active:translate-y-px"
           >
-            초기화
+            <RotateCcw size={16} />
+            Reset
           </button>
+
+          {mode === "countdown" ? (
+            <button
+              onClick={addFiveMinutes}
+              className="flex items-center gap-2 bg-white border border-slate-200 shadow-[0_2px_8px_rgba(35,35,56,0.08)] rounded-full font-semibold text-sm text-[#232338] px-6 py-3 hover:shadow-[0_4px_14px_rgba(35,35,56,0.12)] transition-shadow active:translate-y-px"
+            >
+              <Plus size={16} />
+              5 min
+            </button>
+          ) : (
+            <button
+              onClick={addLap}
+              disabled={!runningRef.current}
+              className="flex items-center gap-2 bg-white border border-slate-200 shadow-[0_2px_8px_rgba(35,35,56,0.08)] rounded-full font-semibold text-sm text-[#232338] px-6 py-3 hover:shadow-[0_4px_14px_rgba(35,35,56,0.12)] transition-shadow active:translate-y-px disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Flag size={16} />
+              Lap
+            </button>
+          )}
         </div>
 
         {mode === "stopwatch" && (
-          <div className="mt-6">
-            <div className="flex justify-between text-[10px] tracking-[0.1em] uppercase text-muted px-1.5 pb-2 border-b border-dashed border-hairline">
+          <div className="mt-7">
+            <div className="flex justify-between text-[10px] tracking-[0.1em] uppercase text-slate-400 px-1.5 pb-2 border-b border-slate-100">
               <span>랩</span>
               <span>구간 / 누적</span>
             </div>
             <div className="max-h-[220px] overflow-y-auto">
               {laps.length === 0 ? (
-                <p className="text-center text-muted text-xs py-4">랩 버튼을 누르면 기록이 여기 쌓여요</p>
+                <p className="text-center text-slate-400 text-xs py-4">랩 버튼을 누르면 기록이 여기 쌓여요</p>
               ) : (
                 laps.map((lap, i) => (
-                  <div key={laps.length - i} className="flex justify-between items-baseline font-mono text-[13px] py-2.5 px-1.5 border-b border-dashed border-hairline">
-                    <span className="text-muted w-11">#{laps.length - i}</span>
+                  <div key={laps.length - i} className="flex justify-between items-baseline font-mono text-[13px] py-2.5 px-1.5 border-b border-slate-100 text-[#232338]">
+                    <span className="text-slate-400 w-11">#{laps.length - i}</span>
                     <span>
                       {fmtShort(lap.total)}{" "}
-                      <span className="text-teal text-[11px]">+{fmtShort(lap.split)}</span>
+                      <span className="text-indigo-500 text-[11px]">+{fmtShort(lap.split)}</span>
                     </span>
                   </div>
                 ))
@@ -343,11 +439,11 @@ export default function TimerPanel() {
       </div>
 
       {/* 하단 광고 자리 */}
-      <div className="bg-panel border border-hairline rounded-lg min-h-[66px] flex items-center justify-center text-muted text-[11px] tracking-wide uppercase mt-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div className="bg-white/10 border border-white/20 rounded-xl min-h-[64px] flex items-center justify-center text-white/60 text-[11px] tracking-wide uppercase mt-6 backdrop-blur-sm">
         광고 영역 (하단)
       </div>
 
-      <p className="text-center text-[11px] text-muted mt-6">
+      <p className="text-center text-[11px] text-white/60 mt-6">
         브라우저 탭이 백그라운드에 있어도 정확한 시간을 유지합니다.
       </p>
     </div>

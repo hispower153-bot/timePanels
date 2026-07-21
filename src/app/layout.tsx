@@ -51,7 +51,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className={`${inter.variable} ${jetbrainsMono.variable} h-full`}>
-      <body className="min-h-full flex flex-col bg-bg text-text antialiased">
+      <body className="min-h-full flex flex-col text-text antialiased">
         {ADSENSE_CLIENT_ID && (
           <Script
             async
@@ -64,7 +64,7 @@ export default function RootLayout({
         <header className="border-b border-hairline">
           <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
             <Link href="/" className="flex items-baseline gap-2.5 group">
-              <span className="font-mono font-extrabold text-[13px] tracking-[0.14em] text-text border border-hairline bg-panel px-2.5 py-1 rounded group-hover:border-amber transition-colors">
+              <span className="font-mono font-extrabold text-[13px] tracking-[0.14em] text-text bg-white/15 border border-hairline px-2.5 py-1 rounded-lg group-hover:bg-white/25 transition-colors">
                 TIME/PANEL
               </span>
               <span className="text-[11px] text-muted tracking-wide hidden sm:inline">

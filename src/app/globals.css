@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #14171A;
+  --panel: #1E2228;
+  --panel-alt: #262B32;
+  --hairline: #2C3138;
+  --amber: #FF9F1C;
+  --teal: #2EC4B6;
+  --red: #FF5D5D;
+  --text: #F1F3F5;
+  --muted: #7C8590;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-alt: var(--panel-alt);
+  --color-hairline: var(--hairline);
+  --color-amber: var(--amber);
+  --color-teal: var(--teal);
+  --color-red: var(--red);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jbmono);
+}
+
+body {
+  background:
+    radial-gradient(120% 140% at 50% -10%, #1B1F24 0%, var(--bg) 55%, #0F1113 100%);
+}
+
+.font-variant-tabular {
+  font-variant-numeric: tabular-nums;
+}
